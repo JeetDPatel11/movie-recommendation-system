@@ -101,6 +101,8 @@ streamlit run app.py
 
 ---
 
+6. Live App : https://movie-recommendation-system-egoz7l84yqyic4bnte9o4e.streamlit.app/
+
 # 🎯 Project Objective
 
 The goal of this project is to solve the problem of **content overload in entertainment platforms** by recommending relevant movies based on user preferences.
