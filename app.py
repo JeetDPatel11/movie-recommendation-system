@@ -1,53 +1,46 @@
 import streamlit as st
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import CountVectorizer
 
-# Page title
-st.title("🎬 Movie Recommendation System")
-
-# Load movie dataset
+# Load datasets
 movies = pd.read_csv("movies.csv")
+ratings = pd.read_csv("ratings.csv")
 
-# Clean genres column
-movies["genres"] = movies["genres"].str.replace("|", " ")
+# Create user-movie matrix
+movie_ratings = ratings.pivot_table(index='userId', columns='movieId', values='rating')
 
-# Convert text to numeric vectors
-vectorizer = CountVectorizer()
-genre_matrix = vectorizer.fit_transform(movies["genres"])
+# Fill missing values
+movie_ratings = movie_ratings.fillna(0)
 
 # Calculate similarity between movies
-similarity = cosine_similarity(genre_matrix)
+similarity = cosine_similarity(movie_ratings.T)
 
-# Recommendation function
-def recommend(movie_name):
-    movie_index = movies[movies["title"] == movie_name].index[0]
-    distances = similarity[movie_index]
+# Convert similarity matrix to DataFrame
+similarity_df = pd.DataFrame(similarity, index=movie_ratings.columns, columns=movie_ratings.columns)
 
-    movie_list = sorted(
-        list(enumerate(distances)),
-        reverse=True,
-        key=lambda x: x[1]
-    )[1:6]
+# Streamlit UI
+st.title("Movie Recommendation System 🎬")
 
+movie_list = movies['title'].values
+selected_movie = st.selectbox("Select a movie", movie_list)
+
+def recommend(movie_title):
+    movie_id = movies[movies['title'] == movie_title]['movieId'].values[0]
+    
+    similar_scores = similarity_df[movie_id].sort_values(ascending=False)[1:6]
+    
     recommended_movies = []
-
-    for i in movie_list:
-        recommended_movies.append(movies.iloc[i[0]].title)
-
+    
+    for movie in similar_scores.index:
+        title = movies[movies['movieId'] == movie]['title'].values[0]
+        recommended_movies.append(title)
+        
     return recommended_movies
 
-
-# Movie selection dropdown
-selected_movie = st.selectbox(
-    "Select a movie",
-    movies["title"].values
-)
-
-# Button to trigger recommendation
 if st.button("Recommend"):
     recommendations = recommend(selected_movie)
-
-    st.subheader("Recommended Movies:")
+    
+    st.write("Recommended Movies:")
+    
     for movie in recommendations:
         st.write(movie)
