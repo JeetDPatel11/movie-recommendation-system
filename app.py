@@ -1,130 +1,151 @@
 import streamlit as st
 import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
+import pickle
+import requests
 
-# -------------------------
-# Load Dataset
-# -------------------------
-movies = pd.read_csv("movies.csv")
-ratings = pd.read_csv("ratings.csv")
+# -------------------------------------------------
+# Page Config
+# -------------------------------------------------
 
-# -------------------------
-# Clean Movie Titles
-# -------------------------
-def clean_title(title):
+st.set_page_config(page_title="Movie Recommendation System", layout="wide")
 
-    year = title[title.find("("):] if "(" in title else ""
+st.title("🎬 Movie Recommendation System")
 
-    name = title.split("(")[0].strip()
+# -------------------------------------------------
+# Fix MovieLens Titles
+# -------------------------------------------------
 
-    if ", The" in name:
-        name = "The " + name.replace(", The", "")
+def fix_title(title):
 
-    if ", A" in name:
-        name = "A " + name.replace(", A", "")
+    articles = ["The", "A", "An", "Le", "La", "Les"]
 
-    if ", An" in name:
-        name = "An " + name.replace(", An", "")
-
-    return name + " " + year
-
-def extract_year(title):
-    if "(" in title and ")" in title:
-        return title.split("(")[-1].replace(")", "")
-    return ""
-
-def clean_title(title):
-
-    # remove year
-    title = title.split("(")[0].strip()
-
-    # fix titles like "Lion King, The"
-    if ", The" in title:
-        title = "The " + title.replace(", The", "")
-
-    if ", A" in title:
-        title = "A " + title.replace(", A", "")
-
-    if ", An" in title:
-        title = "An " + title.replace(", An", "")
+    for article in articles:
+        if f", {article}" in title:
+            title = title.replace(f", {article}", "")
+            title = f"{article} {title}"
 
     return title
 
+# -------------------------------------------------
+# Load Data
+# -------------------------------------------------
 
-movies["clean_title"] = movies["title"].apply(clean_title)
+movies = pd.read_csv("movies.csv")
 
-movies["year"] = movies["title"].str.extract(r"\((\d{4})\)")
-movies["display_title"] = movies["clean_title"] + " (" + movies["year"] + ")"
+movies["title"] = movies["title"].apply(fix_title)
 
+@st.cache_resource
+def load_similarity():
+    return pickle.load(open("similarity.pkl", "rb"))
 
-# -------------------------
-# Create User-Movie Matrix
-# -------------------------
-movie_ratings = ratings.pivot_table(
-    index="userId",
-    columns="movieId",
-    values="rating"
-)
+similarity = load_similarity()
 
-movie_ratings = movie_ratings.fillna(0)
+# -------------------------------------------------
+# OMDB API
+# -------------------------------------------------
 
+API_KEY = "99b21769"
 
-# -------------------------
-# Similarity Matrix
-# -------------------------
-similarity = cosine_similarity(movie_ratings.T)
+def fetch_movie_details(title):
 
-similarity_df = pd.DataFrame(
-    similarity,
-    index=movie_ratings.columns,
-    columns=movie_ratings.columns
-)
+    clean_title = title.split("(")[0].strip()
 
+    url = f"http://www.omdbapi.com/?t={clean_title}&apikey={API_KEY}"
 
-# -------------------------
+    try:
+
+        data = requests.get(url).json()
+
+        poster = data.get("Poster")
+        rating = data.get("imdbRating")
+        genre = data.get("Genre")
+        plot = data.get("Plot")
+
+        if poster == "N/A" or poster is None:
+            poster = "https://via.placeholder.com/300x450?text=No+Poster"
+
+        if rating is None:
+            rating = "N/A"
+
+        if genre is None:
+            genre = "N/A"
+
+        if plot is None:
+            plot = "No description available"
+
+        return poster, rating, genre, plot
+
+    except:
+
+        return (
+            "https://via.placeholder.com/300x450?text=No+Poster",
+            "N/A",
+            "N/A",
+            "No description available"
+        )
+
+# -------------------------------------------------
 # Recommendation Function
-# -------------------------
-def recommend(movie_title):
+# -------------------------------------------------
 
-    movie_id = movies[movies["clean_title"] == movie_title]["movieId"].values[0]
+def recommend(movie):
 
-    similar_movies = similarity_df[movie_id].sort_values(ascending=False)[1:6]
+    movie_index = movies[movies["title"] == movie].index[0]
+
+    distances = similarity[movie_index]
+
+    movie_list = sorted(
+        list(enumerate(distances)),
+        reverse=True,
+        key=lambda x: x[1]
+    )[1:6]
 
     recommended_movies = []
 
-    for movie in similar_movies.index:
-
-        title = movies[movies["movieId"] == movie]["clean_title"].values[0]
-
-        recommended_movies.append(title)
+    for i in movie_list:
+        recommended_movies.append(movies.iloc[i[0]].title)
 
     return recommended_movies
 
+# -------------------------------------------------
+# Movie Selector
+# -------------------------------------------------
 
-# -------------------------
-# Streamlit UI
-# -------------------------
-st.title("Movie Recommendation System 🎬")
+selected_movie = st.selectbox(
+    "Search or Select a Movie",
+    movies["title"].values
+)
 
-movie_list = movies["display_title"].values
+# -------------------------------------------------
+# Recommend Button
+# -------------------------------------------------
 
-selected_display_movie = st.selectbox("Select a movie", movie_list)
-
-selected_movie = movies[movies["display_title"] == selected_display_movie]["clean_title"].values[0]
-
-
-# -------------------------
-# Recommendation Button
-# -------------------------
 if st.button("Recommend"):
 
-    recommendations = recommend(selected_movie)
+    with st.spinner("Finding best movies for you..."):
 
-    st.subheader("Recommended Movies")
+        names = recommend(selected_movie)
 
-    for movie in recommendations:
+        cols = st.columns(5)
 
-        year = movies[movies["clean_title"] == movie]["title"].values[0]
-        year = extract_year(year)
+        for i in range(5):
 
-        st.write(f"{movie} ({year})")
+            with cols[i]:
+
+                poster, rating, genre, plot = fetch_movie_details(names[i])
+
+                st.image(poster, use_container_width=True)
+
+                st.write(names[i])
+                st.write(f"⭐ IMDb: {rating}")
+                st.write(f"🎭 {genre}")
+
+                with st.expander("Plot"):
+                    st.write(plot)
+
+# -------------------------------------------------
+# Footer
+# -------------------------------------------------
+
+st.markdown("---")
+st.markdown("Built by **Jeet Patel** 🚀")
