@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import pickle
 import requests
+import os
+
+if not os.path.exists("similarity.pkl"):
+    import similarity   # this script will regenerate similarity.pkl
 
 # -------------------------------------------------
 # Page Config
