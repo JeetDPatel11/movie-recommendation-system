@@ -1,0 +1,13 @@
+# Ignore large model files
+*.pkl
+*.npy
+*.h5
+
+# Python cache
+__pycache__/
+
+# Virtual environment
+.venv/
+
+# Mac files
+.DS_Store
